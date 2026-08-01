@@ -6,12 +6,18 @@ on:
       - butterscotch-macos9-build2
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   export:
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - name: Check out build files
         uses: actions/checkout@v4
+        with:
+          ref: butterscotch-macos9-build2
 
       - name: Decode port patches
         shell: bash
@@ -87,6 +93,25 @@ jobs:
           text = text.replace(version_marker, '\n#else\nint gladLoadGL(void) { return 0; }\n#endif\nstruct gladGLversionStruct GLVersion = { 0, 0 };', 1)
           glad.write_text(text)
           PY
+
+      - name: Publish reconstructed source files
+        shell: bash
+        run: |
+          rm -rf exported-v3-source
+          mkdir -p exported-v3-source/src/audio/macos9 exported-v3-source/src/desktop/backends exported-v3-source/src/gl_legacy exported-v3-source/macos9
+          cp /tmp/Butterscotch/src/audio/macos9/* exported-v3-source/src/audio/macos9/
+          cp /tmp/Butterscotch/src/desktop/main.c exported-v3-source/src/desktop/main.c
+          cp /tmp/Butterscotch/src/desktop/backends/macos9.c exported-v3-source/src/desktop/backends/macos9.c
+          cp /tmp/Butterscotch/src/gl_legacy/gl_legacy_renderer.c exported-v3-source/src/gl_legacy/gl_legacy_renderer.c
+          cp /tmp/Butterscotch/src/gl_legacy/gl_legacy_renderer.h exported-v3-source/src/gl_legacy/gl_legacy_renderer.h
+          cp /tmp/Butterscotch/src/audio_system.h exported-v3-source/src/audio_system.h
+          cp /tmp/Butterscotch/CMakeLists.txt exported-v3-source/CMakeLists.txt
+          cp /tmp/Butterscotch/macos9/CMakeLists.txt exported-v3-source/macos9/CMakeLists.txt
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add exported-v3-source
+          git commit -m "Export exact v3 Mac OS 9 source" || exit 0
+          git push origin HEAD:butterscotch-macos9-build2
 
       - name: Package reconstructed source
         shell: bash
