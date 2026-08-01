@@ -1,10 +1,14 @@
 name: Build Butterscotch Mac OS 9
 
 on:
-  workflow_dispatch:
+  push:
+    branches:
+      - butterscotch-macos9-build2
   pull_request:
+    types: [opened, synchronize, reopened]
     branches:
       - main
+  workflow_dispatch:
 
 jobs:
   build:
@@ -14,14 +18,12 @@ jobs:
     steps:
       - name: Check out build files
         uses: actions/checkout@v4
-        with:
-          ref: butterscotch-macos9-build
 
       - name: Decode port patch
         shell: bash
         run: |
-          base64 -d butterscotch-macos9.patch.gz.b64 | gzip -d > /tmp/butterscotch-macos9.patch
-          sha256sum /tmp/butterscotch-macos9.patch
+          cat patch.parts/patch.part* | base64 -d | gzip -d > /tmp/butterscotch-macos9.patch
+          echo "c811392eb515c0921def4cc96b8125a426f30e88cdaf6dbe3ade5f01d88e919d  /tmp/butterscotch-macos9.patch" | sha256sum -c -
 
       - name: Fetch matching Butterscotch source
         shell: bash
@@ -52,6 +54,7 @@ jobs:
           find /tmp/Butterscotch/macos9/build -type f \
             \( -name '*.bin' -o -name '*.dsk' -o -name '*.APPL' -o -name '*.ad' -o -name '*.pef' -o -name '*.xcoff' \) \
             -exec cp -v '{}' "$GITHUB_WORKSPACE/artifacts/" \; 2>/dev/null || true
+          find "$GITHUB_WORKSPACE/artifacts" -maxdepth 1 -type f -printf '%f\n' || true
 
       - name: Upload compiler output
         if: always()
