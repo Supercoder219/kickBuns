@@ -1,0 +1,83 @@
+--- a/src/desktop/main.c
++++ b/src/desktop/main.c
+@@ -118,10 +118,41 @@
+ }
+ 
+ #if defined(ENABLE_LEGACY_GL) || defined(ENABLE_MODERN_GL) || ((defined(USE_GLFW3) || defined(USE_GLFW2)) && defined(ENABLE_SW_RENDERER))
++#ifdef PLATFORM_MACOS9
++/*
++ * Apple OpenGL 1.2.1 drivers vary wildly by GPU. Undertale's legacy path only
++ * needs texture unit zero and ordinary additive blending, so provide safe GL
++ * 1.1 fallbacks when Rage-era drivers omit later ARB/EXT entry points.
++ */
++static void APIENTRY macCompatActiveTexture(GLenum texture) {
++    (void)texture;
++}
++
++static void APIENTRY macCompatClientActiveTexture(GLenum texture) {
++    (void)texture;
++}
++
++static void APIENTRY macCompatBlendFuncSeparate(GLenum srcRGB, GLenum dstRGB,
++                                                 GLenum srcAlpha, GLenum dstAlpha) {
++    (void)srcAlpha;
++    (void)dstAlpha;
++    if (glad_glBlendFunc) glad_glBlendFunc(srcRGB, dstRGB);
++}
++
++static void APIENTRY macCompatBlendEquation(GLenum mode) {
++    /* GL 1.1's fixed blend equation is GL_FUNC_ADD, Undertale's normal mode. */
++    (void)mode;
++}
++#endif
++
+ static bool platformInitGlad(void) {
+     glGetString = (PFNGLGETSTRINGPROC)platformGetProcAddress("glGetString");
+-    if (!glGetString)
+-        return 0;
++    if (!glGetString) {
++#ifdef PLATFORM_MACOS9
++        MacTrace_stage("OpenGL failure: glGetString unavailable");
++#endif
++        return false;
++    }
+ 
+     fprintf(stderr, "OpenGL Version: %s\n", (const char*)glGetString(GL_VERSION));
+     GLVer ver = GLCommon_getGLVersion();
+@@ -150,10 +181,21 @@
+     if (!glad_glBlendEquation)
+         glad_glBlendEquation = (PFNGLBLENDEQUATIONPROC)platformGetProcAddress("glBlendEquation");
+ 
+-    if (!glad_glActiveTexture || !glad_glBlendFuncSeparate || !glad_glBlendEquation) {
+-        fprintf(stderr, "Mac OS 9: The OpenGL driver lacks required multitexture/blend extensions.\n");
+-        return false;
++    if (!glad_glActiveTexture) {
++        glad_glActiveTexture = macCompatActiveTexture;
++        MacTrace_stage("OpenGL compatibility: single texture unit fallback");
++    }
++    if (!glad_glClientActiveTexture)
++        glad_glClientActiveTexture = macCompatClientActiveTexture;
++    if (!glad_glBlendFuncSeparate) {
++        glad_glBlendFuncSeparate = macCompatBlendFuncSeparate;
++        MacTrace_stage("OpenGL compatibility: basic blend-function fallback");
++    }
++    if (!glad_glBlendEquation) {
++        glad_glBlendEquation = macCompatBlendEquation;
++        MacTrace_stage("OpenGL compatibility: additive blend-equation fallback");
+     }
++    MacTrace_stage("OpenGL symbol loading complete");
+ #endif
+ 
+     return true;
+--- a/src/gl_legacy/gl_legacy_renderer.c
++++ b/src/gl_legacy/gl_legacy_renderer.c
+@@ -85,7 +85,8 @@
+ #ifdef PLATFORM_PS3
+     return true;
+ #else
+-    return (glGenFramebuffers && glBlitFramebuffer);
++    return glGenFramebuffers && glDeleteFramebuffers && glBindFramebuffer &&
++           glFramebufferTexture2D && glCheckFramebufferStatus && glBlitFramebuffer;
+ #endif
+ }
+ 
