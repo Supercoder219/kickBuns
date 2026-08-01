@@ -1,6 +1,6 @@
 name: Build Butterscotch Mac OS 9
 
-# Build trigger 2
+# Build trigger 3
 on:
   push:
     branches:
@@ -22,8 +22,8 @@ jobs:
       - name: Decode port patch
         shell: bash
         run: |
-          base64 -d butterscotch-macos9.patch.gz.b64 | gzip -d > /tmp/butterscotch-macos9.patch
-          sha256sum /tmp/butterscotch-macos9.patch
+          cat patch.parts/patch.part* | base64 -d | gzip -d > /tmp/butterscotch-macos9.patch
+          echo "c811392eb515c0921def4cc96b8125a426f30e88cdaf6dbe3ade5f01d88e919d  /tmp/butterscotch-macos9.patch" | sha256sum -c -
 
       - name: Fetch matching Butterscotch source
         shell: bash
