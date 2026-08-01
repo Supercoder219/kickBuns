@@ -60,7 +60,6 @@ jobs:
           text = root.read_text()
           old = '    target_link_libraries(butterscotch PRIVATE ${BACKEND_LIBRARIES} ${AUDIO_LIBRARIES} ${PLATFORM_LIBRARIES})'
           new = '''    if(PLATFORM STREQUAL "macos9")
-              # Retro68 add_application() uses CMake's plain link signature.
               target_link_libraries(butterscotch ${BACKEND_LIBRARIES} ${AUDIO_LIBRARIES} ${PLATFORM_LIBRARIES})
           else()
               target_link_libraries(butterscotch PRIVATE ${BACKEND_LIBRARIES} ${AUDIO_LIBRARIES} ${PLATFORM_LIBRARIES})
@@ -69,7 +68,6 @@ jobs:
               raise SystemExit('Expected link line was not found')
           text = text.replace(old, new, 1)
 
-          # Retro68/newlib already supplies strings.h, strcasecmp, and strtok_r.
           old_defs = 'PLATFORM_MACOS9 USE_MACOS9_NATIVE NO_STRINGS_H NO_STRCASECMP NO_STRTOK_R STBI_NO_SIMD'
           new_defs = 'PLATFORM_MACOS9 USE_MACOS9_NATIVE STBI_NO_SIMD'
           if old_defs not in text:
@@ -85,9 +83,6 @@ jobs:
               raise SystemExit('Expected project language line was not found')
           mac.write_text(text.replace(old, new, 1))
 
-          # Multiversal omits Apple's Microseconds()/UnsignedWide declarations.
-          # TickCount is universally available in Classic Mac OS and sufficient
-          # for scheduling the first bootable port at 60 Hz resolution.
           gettime = Path('/tmp/Butterscotch/src/gettime.c')
           text = gettime.read_text()
           old = '''    /* Microseconds() is monotonic from boot and is available in the Classic Mac OS Toolbox. */
@@ -100,8 +95,6 @@ jobs:
               raise SystemExit('Expected Mac OS 9 Microseconds block was not found')
           gettime.write_text(text.replace(old, new, 1))
 
-          # Types.h includes Multiverse.h, which already contains the Code
-          # Fragment Manager declarations. Use Multiversal's actual names.
           backend = Path('/tmp/Butterscotch/src/desktop/backends/macos9.c')
           text = backend.read_text()
           if '#include <CodeFragments.h>' not in text:
@@ -120,8 +113,6 @@ jobs:
               text = text.replace(old_name, new_name)
           backend.write_text(text)
 
-          # Mac OS 9 resolves OpenGL through Code Fragment Manager in the
-          # native backend. GLAD's built-in Unix dlopen loader is unnecessary.
           glad = Path('/tmp/Butterscotch/vendor/glad/src/glad.c')
           text = glad.read_text()
           loader_start = '#if defined(_WIN32) || defined(__CYGWIN__)'
@@ -136,6 +127,8 @@ jobs:
           )
           glad.write_text(text)
           PY
+
+          python3 "$GITHUB_WORKSPACE/patch.v2/hotfix-runtime-v5.py"
 
       - name: Configure PowerPC Classic build
         shell: bash
