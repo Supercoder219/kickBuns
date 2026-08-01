@@ -1,0 +1,59 @@
+name: Build Butterscotch Mac OS 9
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/autc04/retro68:latest
+    steps:
+      - name: Check out build files
+        uses: actions/checkout@v4
+
+      - name: Decode port patch
+        shell: bash
+        run: |
+          base64 -d butterscotch-macos9.patch.gz.b64 | gzip -d > /tmp/butterscotch-macos9.patch
+          sha256sum /tmp/butterscotch-macos9.patch
+
+      - name: Fetch matching Butterscotch source
+        shell: bash
+        run: |
+          git clone https://github.com/ButterscotchRunner/Butterscotch.git /tmp/Butterscotch
+          cd /tmp/Butterscotch
+          git checkout 3a0270d6a5022ad20fed1c7f9dca647f41ce26da
+          patch -p1 < /tmp/butterscotch-macos9.patch
+
+      - name: Configure PowerPC Classic build
+        shell: bash
+        run: |
+          cmake -S /tmp/Butterscotch/macos9 -B /tmp/Butterscotch/macos9/build \
+            -DCMAKE_TOOLCHAIN_FILE=/Retro68-build/toolchain/powerpc-apple-macos/cmake/retroppc.toolchain.cmake \
+            -DCMAKE_BUILD_TYPE=Release
+
+      - name: Compile
+        shell: bash
+        run: |
+          cmake --build /tmp/Butterscotch/macos9/build --parallel 2 2>&1 | tee /tmp/build.log
+
+      - name: Collect outputs
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/artifacts"
+          cp /tmp/build.log "$GITHUB_WORKSPACE/artifacts/" 2>/dev/null || true
+          find /tmp/Butterscotch/macos9/build -type f \
+            \( -name '*.bin' -o -name '*.dsk' -o -name '*.APPL' -o -name '*.ad' -o -name '*.pef' -o -name '*.xcoff' \) \
+            -exec cp -v '{}' "$GITHUB_WORKSPACE/artifacts/" \; 2>/dev/null || true
+
+      - name: Upload compiler output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Butterscotch-MacOS9-build
+          path: artifacts/
+          if-no-files-found: warn
