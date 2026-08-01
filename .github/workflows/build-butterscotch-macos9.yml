@@ -100,53 +100,6 @@ jobs:
               1,
           )
           glad.write_text(text)
-
-          # Classic Mac OS has no POSIX dirent.h. File enumeration is not
-          # required for Undertale's first boot, so keep the overlay filesystem
-          # functional for direct reads/writes while treating directory listings
-          # as empty until the File Manager enumerator is wired in.
-          ofs = Path('/tmp/Butterscotch/src/overlay_file_system.c')
-          text = ofs.read_text()
-          old = '''#ifdef _WIN32
-          #include <direct.h>
-          #include <windows.h>
-          #define overlayMkdir(path) _mkdir(path)
-          #define overlayRmdir(path) _rmdir(path)
-          #else
-          #include <unistd.h>
-          #include <dirent.h>
-          #define overlayMkdir(path) mkdir((path), 0777)
-          #define overlayRmdir(path) rmdir(path)
-          #endif'''
-          new = '''#if defined(PLATFORM_MACOS9)
-          #include <unistd.h>
-          #define overlayMkdir(path) mkdir((path), 0777)
-          #define overlayRmdir(path) rmdir(path)
-          #elif defined(_WIN32)
-          #include <direct.h>
-          #include <windows.h>
-          #define overlayMkdir(path) _mkdir(path)
-          #define overlayRmdir(path) _rmdir(path)
-          #else
-          #include <unistd.h>
-          #include <dirent.h>
-          #define overlayMkdir(path) mkdir((path), 0777)
-          #define overlayRmdir(path) rmdir(path)
-          #endif'''
-          if old not in text:
-              raise SystemExit('Expected overlay filesystem include block was not found')
-          text = text.replace(old, new, 1)
-          old = '''static void listSingleDir(FileSystemDirEntry** list, const char* fullDir) {
-          #ifdef _WIN32'''
-          new = '''static void listSingleDir(FileSystemDirEntry** list, const char* fullDir) {
-          #if defined(PLATFORM_MACOS9)
-              (void)list;
-              (void)fullDir;
-              return;
-          #elif defined(_WIN32)'''
-          if old not in text:
-              raise SystemExit('Expected directory enumeration block was not found')
-          ofs.write_text(text.replace(old, new, 1))
           PY
 
       - name: Configure PowerPC Classic build
