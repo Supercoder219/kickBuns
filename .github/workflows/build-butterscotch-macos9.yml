@@ -1,11 +1,12 @@
 name: Build Butterscotch Mac OS 9
 
-# Build trigger 3
+# Build trigger 4
 on:
   push:
     branches:
       - butterscotch-macos9-build
   pull_request:
+    types: [opened, synchronize, reopened]
     branches:
       - main
   workflow_dispatch:
