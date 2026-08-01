@@ -81,3 +81,65 @@
  #endif
  }
  
+--- a/src/audio/macos9/mac_audio_system.c
++++ b/src/audio/macos9/mac_audio_system.c
+@@ -99,6 +99,7 @@ typedef struct MacAudioSystem {
+     AudioSystem base;
+     FileSystem* fileSystem;
+     SndChannelPtr channel;
++    SndDoubleBackUPP doubleBackUPP;
+     SndDoubleBufferHeader header;
+     SndDoubleBufferPtr buffers[2];
+     volatile bool bufferNeedsFill[2];
+@@ -373,7 +374,7 @@ static void fillOutputBuffer(MacAudioSystem* mac, SndDoubleBufferPtr buffer) {
+     buffer->dbFlags = dbBufferReady;
+ }
+ 
+-static void macDoubleBack(SndChannelPtr channel, SndDoubleBufferPtr buffer) {
++static pascal void macDoubleBack(SndChannelPtr channel, SndDoubleBufferPtr buffer) {
+     MacAudioSystem* mac = gMacAudio;
+     (void)channel;
+     if (mac == NULL || buffer == NULL) return;
+@@ -451,7 +452,17 @@ static void macInit(AudioSystem* audio, DataWin* dataWin, FileSystem* fileSystem
+     mac->header.dbhCompressionID = 0;
+     mac->header.dbhPacketSize = 0;
+     mac->header.dbhSampleRate = (Fixed)((UInt32)MAC_AUDIO_OUTPUT_RATE << 16);
+-    mac->header.dbhDoubleBack = (SndDoubleBackUPP)macDoubleBack;
++
++    /* PowerPC CFM callbacks must be wrapped in a Routine Descriptor. */
++    mac->doubleBackUPP = NewSndDoubleBackUPP(macDoubleBack);
++    if (mac->doubleBackUPP == NULL) {
++        fprintf(stderr, "Mac audio: NewSndDoubleBackUPP failed; continuing without sound\n");
++        MacTrace_stage("audio init failed: callback UPP allocation");
++        SndDisposeChannel(mac->channel, true);
++        mac->channel = NULL;
++        return;
++    }
++    mac->header.dbhDoubleBack = mac->doubleBackUPP;
+ 
+     for (i = 0; i < 2; ++i) {
+         mac->buffers[i] = (SndDoubleBufferPtr)calloc(1, bufferBytes);
+@@ -474,6 +485,7 @@ static void macInit(AudioSystem* audio, DataWin* dataWin, FileSystem* fileSystem
+     if (err != noErr) {
+         fprintf(stderr, "Mac audio: SndPlayDoubleBuffer failed (%d); continuing without sound\n", (int)err);
+         MacTrace_stage("audio init failed: SndPlayDoubleBuffer");
++        gMacAudio = NULL;
+         return;
+     }
+     mac->initialized = true;
+@@ -487,7 +499,14 @@ static void macDestroy(AudioSystem* audio) {
+     int i;
+     gMacAudio = NULL;
+     for (i = 0; i < MAC_AUDIO_MAX_VOICES; ++i) releaseVoice(&mac->voices[i]);
+-    if (mac->channel != NULL) SndDisposeChannel(mac->channel, true);
++    if (mac->channel != NULL) {
++        SndDisposeChannel(mac->channel, true);
++        mac->channel = NULL;
++    }
++    if (mac->doubleBackUPP != NULL) {
++        DisposeSndDoubleBackUPP(mac->doubleBackUPP);
++        mac->doubleBackUPP = NULL;
++    }
+     for (i = 0; i < 2; ++i) free(mac->buffers[i]);
+     for (i = 0; i < MAC_AUDIO_MAX_STREAMS; ++i) free(mac->streams[i].path);
+     if (arrlen(mac->base.audioGroups) > 1) {
