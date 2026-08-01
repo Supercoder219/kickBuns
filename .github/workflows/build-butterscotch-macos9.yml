@@ -52,7 +52,16 @@ jobs:
           endif()'''
           if old not in text:
               raise SystemExit('Expected link line was not found')
-          root.write_text(text.replace(old, new, 1))
+          text = text.replace(old, new, 1)
+
+          # Retro68/newlib already supplies strings.h, strcasecmp, and strtok_r.
+          # Do not activate Butterscotch's fallback copies for this target.
+          old_defs = 'PLATFORM_MACOS9 USE_MACOS9_NATIVE NO_STRINGS_H NO_STRCASECMP NO_STRTOK_R STBI_NO_SIMD'
+          new_defs = 'PLATFORM_MACOS9 USE_MACOS9_NATIVE STBI_NO_SIMD'
+          if old_defs not in text:
+              raise SystemExit('Expected Mac OS 9 compatibility definitions were not found')
+          text = text.replace(old_defs, new_defs, 1)
+          root.write_text(text)
 
           mac = Path('/tmp/Butterscotch/macos9/CMakeLists.txt')
           text = mac.read_text()
