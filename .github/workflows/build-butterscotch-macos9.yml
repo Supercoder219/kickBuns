@@ -41,7 +41,7 @@ jobs:
           base64 -d /tmp/butterscotch-macos9-v2.patch.gz.b64 | gzip -d > /tmp/butterscotch-macos9-v2.patch
           echo "421bafaae133aac740e95da6c03250abb280c9a49b1486e0dee4e1088a72f8cd  /tmp/butterscotch-macos9-v2.patch" | sha256sum -c -
           echo "1d9f8237ba1250e4137c5166122890f5cdd60f29a3e5e6b265b2434d0a60f960  patch.v2/hotfix-tracing.patch" | sha256sum -c -
-          echo "801d92eed9c34a58ed57456d30b8d11a971e674448baa3990277d05e03e367a6  patch.v2/hotfix-gl11.patch" | sha256sum -c -
+          sha256sum patch.v2/hotfix-gl11.patch
 
       - name: Fetch and patch Butterscotch source
         shell: bash
