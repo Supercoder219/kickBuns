@@ -40,6 +40,7 @@ jobs:
           echo "b10ad5ff33650a969b10f06be8bc2508ad845eee06434eeeca5e1c6ac40ba390  /tmp/butterscotch-macos9-v2.patch.gz.b64" | sha256sum -c -
           base64 -d /tmp/butterscotch-macos9-v2.patch.gz.b64 | gzip -d > /tmp/butterscotch-macos9-v2.patch
           echo "421bafaae133aac740e95da6c03250abb280c9a49b1486e0dee4e1088a72f8cd  /tmp/butterscotch-macos9-v2.patch" | sha256sum -c -
+          echo "1d9f8237ba1250e4137c5166122890f5cdd60f29a3e5e6b265b2434d0a60f960  patch.v2/hotfix-tracing.patch" | sha256sum -c -
 
       - name: Fetch and patch Butterscotch source
         shell: bash
@@ -49,6 +50,7 @@ jobs:
           git checkout 3a0270d6a5022ad20fed1c7f9dca647f41ce26da
           patch -p1 < /tmp/butterscotch-macos9.patch
           patch -p1 < /tmp/butterscotch-macos9-v2.patch
+          patch -p1 < "$GITHUB_WORKSPACE/patch.v2/hotfix-tracing.patch"
           python3 - <<'PY'
           from pathlib import Path
 
