@@ -19,7 +19,7 @@ jobs:
       - name: Check out build files
         uses: actions/checkout@v4
 
-      - name: Decode port patch
+      - name: Decode port patches
         shell: bash
         run: |
           echo "9968be8c2fdaa63c4ecf90920b81824fedc5a8c97886cbbcbc9260f758d4d17a  patch.small/part00" | sha256sum -c -
@@ -31,6 +31,16 @@ jobs:
           cat patch.small/part* | base64 -d | gzip -d > /tmp/butterscotch-macos9.patch
           echo "c811392eb515c0921def4cc96b8125a426f30e88cdaf6dbe3ade5f01d88e919d  /tmp/butterscotch-macos9.patch" | sha256sum -c -
 
+          echo "5f3c7809ff8acbe813f7a2877b7922bc57b2c6e42ffa8172c82db69101cabfce  patch.v2/part00" | sha256sum -c -
+          echo "149ba1a0098319e55637c6ac2adb56631e6ad481a98e563d3b7c37ad1f5bc556  patch.v2/part01" | sha256sum -c -
+          echo "36e580aefdc2b4369ff666a1b46ca442cfc2418d174f748df8c9b467ade478b3  patch.v2/part02" | sha256sum -c -
+          echo "211df1a0af4a50304cd3e47417b16febf5ee7814587be2a41f458fb0069a187c  patch.v2/part03" | sha256sum -c -
+          echo "417b7a05a21759191d4e499d8005b65a5b4b182db4efb8470db17b74437b4849  patch.v2/part04" | sha256sum -c -
+          cat patch.v2/part* > /tmp/butterscotch-macos9-v2.patch.gz.b64
+          echo "b10ad5ff33650a969b10f06be8bc2508ad845eee06434eeeca5e1c6ac40ba390  /tmp/butterscotch-macos9-v2.patch.gz.b64" | sha256sum -c -
+          base64 -d /tmp/butterscotch-macos9-v2.patch.gz.b64 | gzip -d > /tmp/butterscotch-macos9-v2.patch
+          echo "421bafaae133aac740e95da6c03250abb280c9a49b1486e0dee4e1088a72f8cd  /tmp/butterscotch-macos9-v2.patch" | sha256sum -c -
+
       - name: Fetch and patch Butterscotch source
         shell: bash
         run: |
@@ -38,6 +48,7 @@ jobs:
           cd /tmp/Butterscotch
           git checkout 3a0270d6a5022ad20fed1c7f9dca647f41ce26da
           patch -p1 < /tmp/butterscotch-macos9.patch
+          patch -p1 < /tmp/butterscotch-macos9-v2.patch
           python3 - <<'PY'
           from pathlib import Path
 
