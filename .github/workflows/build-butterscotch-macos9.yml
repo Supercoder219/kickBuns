@@ -22,7 +22,13 @@ jobs:
       - name: Decode port patch
         shell: bash
         run: |
-          cat patch.parts/patch.part* | base64 -d | gzip -d > /tmp/butterscotch-macos9.patch
+          echo "9968be8c2fdaa63c4ecf90920b81824fedc5a8c97886cbbcbc9260f758d4d17a  patch.small/part00" | sha256sum -c -
+          echo "153fddaa33b4233350ad46fa297dc74222783cfbc3792ecc079ea48303512662  patch.small/part01" | sha256sum -c -
+          echo "c9bb48cc23fddd26639240d0204165e5f556b60f894b6a9a0c75deaaf3bc4e58  patch.small/part02" | sha256sum -c -
+          echo "7fbe00d9288caffae357ae86650f9feb974ba6bb28584101cf0bdc99142668eb  patch.small/part03" | sha256sum -c -
+          echo "e9ae95d24146bd11755740f8c5f8648e17bbf9c8a955a15bf2c704a1c36d9f8b  patch.small/part04" | sha256sum -c -
+          echo "90b1d9a99a053737be8bf601cf68d3057dd055b4e51fbd21510de2ec994297d4  patch.small/part05" | sha256sum -c -
+          cat patch.small/part* | base64 -d | gzip -d > /tmp/butterscotch-macos9.patch
           echo "c811392eb515c0921def4cc96b8125a426f30e88cdaf6dbe3ade5f01d88e919d  /tmp/butterscotch-macos9.patch" | sha256sum -c -
 
       - name: Fetch matching Butterscotch source
