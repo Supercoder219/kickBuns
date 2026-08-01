@@ -1,6 +1,6 @@
 name: Build Butterscotch Mac OS 9
 
-# Build trigger 4
+# Build trigger 5
 on:
   push:
     branches:
