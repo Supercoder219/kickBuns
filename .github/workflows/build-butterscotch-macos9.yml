@@ -40,8 +40,9 @@ jobs:
           patch -p1 < /tmp/butterscotch-macos9.patch
           python3 - <<'PY'
           from pathlib import Path
-          path = Path('/tmp/Butterscotch/CMakeLists.txt')
-          text = path.read_text()
+
+          root = Path('/tmp/Butterscotch/CMakeLists.txt')
+          text = root.read_text()
           old = '    target_link_libraries(butterscotch PRIVATE ${BACKEND_LIBRARIES} ${AUDIO_LIBRARIES} ${PLATFORM_LIBRARIES})'
           new = '''    if(PLATFORM STREQUAL "macos9")
               # Retro68 add_application() uses CMake's plain link signature.
@@ -51,7 +52,15 @@ jobs:
           endif()'''
           if old not in text:
               raise SystemExit('Expected link line was not found')
-          path.write_text(text.replace(old, new, 1))
+          root.write_text(text.replace(old, new, 1))
+
+          mac = Path('/tmp/Butterscotch/macos9/CMakeLists.txt')
+          text = mac.read_text()
+          old = 'project(ButterscotchMacOS9 C)'
+          new = 'project(ButterscotchMacOS9 C CXX)'
+          if old not in text:
+              raise SystemExit('Expected project language line was not found')
+          mac.write_text(text.replace(old, new, 1))
           PY
 
       - name: Configure PowerPC Classic build
