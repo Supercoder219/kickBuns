@@ -85,6 +85,37 @@ jobs:
               raise SystemExit('Expected Mac OS 9 Microseconds block was not found')
           gettime.write_text(text.replace(old, new, 1))
 
+          # The generated Multiversal interfaces do not install CodeFragments.h.
+          # Declare the tiny CFM surface used by this backend with ABI-compatible
+          # PowerPC types and constants, then keep loading OpenGLLibrary normally.
+          backend = Path('/tmp/Butterscotch/src/desktop/backends/macos9.c')
+          text = backend.read_text()
+          old = '#include <CodeFragments.h>'
+          new = '''typedef void* BSConnectionID;
+          typedef unsigned char BSSymClass;
+          extern OSErr FindSymbol(BSConnectionID connID, const unsigned char* symName,
+                                  Ptr* symAddr, BSSymClass* symClass);
+          extern OSErr CloseConnection(BSConnectionID* cidp);
+          extern OSErr GetSharedLibrary(const unsigned char* library, OSType arch,
+                                        UInt32 loadflags, BSConnectionID* cidp,
+                                        Ptr* mainaddrp, Str255 errName);
+          #define BS_K_POWERPC_ARCH ((OSType)'pwpc')
+          #define BS_K_REFERENCE_CFRAG 1'''
+          if old not in text:
+              raise SystemExit('Expected CodeFragments include was not found')
+          text = text.replace(old, new, 1)
+          replacements = {
+              'CFragConnectionID': 'BSConnectionID',
+              'CFragSymbolClass': 'BSSymClass',
+              'kPowerPCCFragArch': 'BS_K_POWERPC_ARCH',
+              'kLoadCFrag': 'BS_K_REFERENCE_CFRAG',
+          }
+          for old_name, new_name in replacements.items():
+              if old_name not in text:
+                  raise SystemExit(f'Expected CFM token was not found: {old_name}')
+              text = text.replace(old_name, new_name)
+          backend.write_text(text)
+
           # Mac OS 9 resolves OpenGL through Code Fragment Manager in the
           # native backend. GLAD's built-in Unix dlopen loader is unnecessary.
           glad = Path('/tmp/Butterscotch/vendor/glad/src/glad.c')
