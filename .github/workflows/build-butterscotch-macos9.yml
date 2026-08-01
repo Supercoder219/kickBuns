@@ -55,7 +55,6 @@ jobs:
           text = text.replace(old, new, 1)
 
           # Retro68/newlib already supplies strings.h, strcasecmp, and strtok_r.
-          # Do not activate Butterscotch's fallback copies for this target.
           old_defs = 'PLATFORM_MACOS9 USE_MACOS9_NATIVE NO_STRINGS_H NO_STRCASECMP NO_STRTOK_R STBI_NO_SIMD'
           new_defs = 'PLATFORM_MACOS9 USE_MACOS9_NATIVE STBI_NO_SIMD'
           if old_defs not in text:
@@ -71,9 +70,23 @@ jobs:
               raise SystemExit('Expected project language line was not found')
           mac.write_text(text.replace(old, new, 1))
 
+          # Multiversal omits Apple's Microseconds()/UnsignedWide declarations.
+          # TickCount is universally available in Classic Mac OS and sufficient
+          # for scheduling the first bootable port at 60 Hz resolution.
+          gettime = Path('/tmp/Butterscotch/src/gettime.c')
+          text = gettime.read_text()
+          old = '''    /* Microseconds() is monotonic from boot and is available in the Classic Mac OS Toolbox. */
+              UnsignedWide t;
+              Microseconds(&t);
+              return ((((uint64_t)t.hi) << 32) | (uint64_t)t.lo) * 1000ULL;'''
+          new = '''    /* TickCount() advances at 60 Hz and is monotonic from boot. */
+              return ((uint64_t)TickCount() * 1000000000ULL) / 60ULL;'''
+          if old not in text:
+              raise SystemExit('Expected Mac OS 9 Microseconds block was not found')
+          gettime.write_text(text.replace(old, new, 1))
+
           # Mac OS 9 resolves OpenGL through Code Fragment Manager in the
-          # native backend. GLAD's built-in Unix dlopen loader is unnecessary
-          # and includes dlfcn.h, which Classic Mac OS does not provide.
+          # native backend. GLAD's built-in Unix dlopen loader is unnecessary.
           glad = Path('/tmp/Butterscotch/vendor/glad/src/glad.c')
           text = glad.read_text()
           loader_start = '#if defined(_WIN32) || defined(__CYGWIN__)'
