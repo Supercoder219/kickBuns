@@ -3,15 +3,21 @@ import os
 import subprocess
 
 workspace = Path(os.environ['GITHUB_WORKSPACE'])
+old_commit = 'a24cab4ea594e9e928e536597b252a61019c36aa'
 
-# Keep the exact v5 flight-recorder and shutdown changes from the commit that
-# produced the hardware-tested build, then apply the v6 event-loop repair.
+# Actions checks out a shallow synthetic PR merge. Mark it safe and fetch the
+# exact commit containing the hardware-tested v5 script before reading it.
+subprocess.run(
+    ['git', 'config', '--global', '--add', 'safe.directory', str(workspace)],
+    check=True,
+)
+subprocess.run(
+    ['git', 'fetch', '--depth=1', 'origin', old_commit],
+    cwd=workspace,
+    check=True,
+)
 v5_source = subprocess.check_output(
-    [
-        'git',
-        'show',
-        'a24cab4ea594e9e928e536597b252a61019c36aa:patch.v2/hotfix-runtime-v5.py',
-    ],
+    ['git', 'show', f'{old_commit}:patch.v2/hotfix-runtime-v5.py'],
     cwd=workspace,
     text=True,
 )
