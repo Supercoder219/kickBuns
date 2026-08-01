@@ -61,6 +61,23 @@ jobs:
           if old not in text:
               raise SystemExit('Expected project language line was not found')
           mac.write_text(text.replace(old, new, 1))
+
+          # Mac OS 9 resolves OpenGL through Code Fragment Manager in the
+          # native backend. GLAD's built-in Unix dlopen loader is unnecessary
+          # and includes dlfcn.h, which Classic Mac OS does not provide.
+          glad = Path('/tmp/Butterscotch/vendor/glad/src/glad.c')
+          text = glad.read_text()
+          loader_start = '#if defined(_WIN32) || defined(__CYGWIN__)'
+          version_marker = '\nstruct gladGLversionStruct GLVersion = { 0, 0 };'
+          if loader_start not in text or version_marker not in text:
+              raise SystemExit('Expected GLAD loader markers were not found')
+          text = text.replace(loader_start, '#if !defined(PLATFORM_MACOS9)\n' + loader_start, 1)
+          text = text.replace(
+              version_marker,
+              '\n#else\nint gladLoadGL(void) { return 0; }\n#endif\nstruct gladGLversionStruct GLVersion = { 0, 0 };',
+              1,
+          )
+          glad.write_text(text)
           PY
 
       - name: Configure PowerPC Classic build
