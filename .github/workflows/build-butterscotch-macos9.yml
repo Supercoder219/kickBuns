@@ -31,13 +31,28 @@ jobs:
           cat patch.small/part* | base64 -d | gzip -d > /tmp/butterscotch-macos9.patch
           echo "c811392eb515c0921def4cc96b8125a426f30e88cdaf6dbe3ade5f01d88e919d  /tmp/butterscotch-macos9.patch" | sha256sum -c -
 
-      - name: Fetch matching Butterscotch source
+      - name: Fetch and patch Butterscotch source
         shell: bash
         run: |
           git clone https://github.com/ButterscotchRunner/Butterscotch.git /tmp/Butterscotch
           cd /tmp/Butterscotch
           git checkout 3a0270d6a5022ad20fed1c7f9dca647f41ce26da
           patch -p1 < /tmp/butterscotch-macos9.patch
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('/tmp/Butterscotch/CMakeLists.txt')
+          text = path.read_text()
+          old = '    target_link_libraries(butterscotch PRIVATE ${BACKEND_LIBRARIES} ${AUDIO_LIBRARIES} ${PLATFORM_LIBRARIES})'
+          new = '''    if(PLATFORM STREQUAL "macos9")
+              # Retro68 add_application() uses CMake's plain link signature.
+              target_link_libraries(butterscotch ${BACKEND_LIBRARIES} ${AUDIO_LIBRARIES} ${PLATFORM_LIBRARIES})
+          else()
+              target_link_libraries(butterscotch PRIVATE ${BACKEND_LIBRARIES} ${AUDIO_LIBRARIES} ${PLATFORM_LIBRARIES})
+          endif()'''
+          if old not in text:
+              raise SystemExit('Expected link line was not found')
+          path.write_text(text.replace(old, new, 1))
+          PY
 
       - name: Configure PowerPC Classic build
         shell: bash
