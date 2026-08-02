@@ -25,3 +25,6 @@ exec(compile(v5_source, 'hotfix-runtime-v5-core.py', 'exec'))
 
 v6_path = workspace / 'patch.v2' / 'hotfix-runtime-v6.py'
 exec(compile(v6_path.read_text(), str(v6_path), 'exec'))
+
+v7_path = workspace / 'patch.v2' / 'hotfix-runtime-v7.py'
+exec(compile(v7_path.read_text(), str(v7_path), 'exec'))
