@@ -10,6 +10,21 @@ def replace_once(text: str, old: str, new: str, label: str) -> str:
 renderer = Path('/tmp/Butterscotch/src/gl_legacy/gl_legacy_renderer.c')
 text = renderer.read_text()
 
+# Define the reduced Mac texture format before glInit creates its first texture.
+text = replace_once(
+    text,
+    '#include "gl_common.h"\n',
+    '''#include "gl_common.h"
+
+#ifdef PLATFORM_MACOS9
+#define BS_GL_TEXTURE_INTERNAL_FORMAT GL_RGBA4
+#else
+#define BS_GL_TEXTURE_INTERNAL_FORMAT GL_RGBA
+#endif
+''',
+    'early texture format definition',
+)
+
 # The normal legacy renderer draws into an offscreen FBO and vertically flips
 # its projection before the final surface blit. Direct-window mode has no final
 # blit, so keeping that flip mirrors the complete Undertale frame vertically.
@@ -48,8 +63,6 @@ text = replace_once(
 # remain based on the original atlas dimensions, so sprite layout is preserved.
 helper_anchor = '// Lazily decodes and uploads a TXTR page on first access.\n'
 helper = r'''#ifdef PLATFORM_MACOS9
-#define BS_GL_TEXTURE_INTERNAL_FORMAT GL_RGBA4
-
 static uint8_t* macDownscaleTexturePage(const uint8_t* source, int srcW, int srcH,
                                         int* uploadW, int* uploadH) {
     GLint reportedMax = 0;
@@ -81,8 +94,6 @@ static uint8_t* macDownscaleTexturePage(const uint8_t* source, int srcW, int src
     }
     return result;
 }
-#else
-#define BS_GL_TEXTURE_INTERNAL_FORMAT GL_RGBA
 #endif
 
 '''
@@ -104,8 +115,8 @@ upload_new = '''    glBindTexture(GL_TEXTURE_2D, gl->glTextures[pageId]);
                      uploadW, uploadH, 0, GL_RGBA, GL_UNSIGNED_BYTE, uploadPixels);
         if (glGetError() != GL_NO_ERROR) {
             char stage[96];
-            snprintf(stage, sizeof(stage), "texture upload failed: page=%u original=%dx%d upload=%dx%d",
-                     (unsigned)pageId, w, h, uploadW, uploadH);
+            snprintf(stage, sizeof(stage), "texture upload failed: page=%lu original=%ldx%ld upload=%dx%d",
+                     (unsigned long)pageId, (long)w, (long)h, uploadW, uploadH);
             MacTrace_stage(stage);
             free(scaled);
             free(pixels);
@@ -115,8 +126,8 @@ upload_new = '''    glBindTexture(GL_TEXTURE_2D, gl->glTextures[pageId]);
         }
         if (scaled != NULL) {
             char stage[96];
-            snprintf(stage, sizeof(stage), "texture reduced: page=%u %dx%d to %dx%d",
-                     (unsigned)pageId, w, h, uploadW, uploadH);
+            snprintf(stage, sizeof(stage), "texture reduced: page=%lu %ldx%ld to %dx%d",
+                     (unsigned long)pageId, (long)w, (long)h, uploadW, uploadH);
             MacTrace_stage(stage);
         }
         free(scaled);
@@ -137,8 +148,8 @@ renderer.write_text(text)
 
 
 # A Retro68 console window is excellent while debugging and extremely expensive
-# while a 350 MHz-class G3 is trying to interpret GML and draw OpenGL. The file
-# flight recorder remains active, so remove only the live Toolbox console.
+# while a G3 is interpreting GML and drawing OpenGL. Keep stdio link symbols as
+# cheap sinks, while MacTrace continues writing its persistent file directly.
 root = Path('/tmp/Butterscotch/CMakeLists.txt')
 text = root.read_text()
 text = replace_once(
@@ -149,9 +160,51 @@ text = replace_once(
 )
 root.write_text(text)
 
+silent_console = Path('/tmp/Butterscotch/src/macos9_silent_console.c')
+silent_console.write_text(r'''#include <sys/types.h>
+#include <stddef.h>
+
+ssize_t _consolewrite(int fd, const void* buffer, size_t count) {
+    (void)fd;
+    (void)buffer;
+    return (ssize_t)count;
+}
+
+ssize_t _consoleread(int fd, void* buffer, size_t count) {
+    (void)fd;
+    (void)buffer;
+    (void)count;
+    return 0;
+}
+''')
+
+mac_cmake = Path('/tmp/Butterscotch/macos9/CMakeLists.txt')
+text = mac_cmake.read_text()
+text = replace_once(
+    text,
+    '''target_sources(butterscotch PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/../src/audio/macos9/mac_audio_system.c"
+)''',
+    '''target_sources(butterscotch PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/../src/audio/macos9/mac_audio_system.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../src/macos9_silent_console.c"
+)''',
+    'silent console target source',
+)
+
+# Release already selects optimisation, but state the G3-safe hot path flags
+# explicitly so container/toolchain defaults cannot quietly regress them.
+text = replace_once(
+    text,
+    'add_compile_options(-mcpu=750 -mtune=750)',
+    'add_compile_options(-mcpu=750 -mtune=750 -O3 -fomit-frame-pointer -fno-math-errno)',
+    'G3 release optimisation flags',
+)
+mac_cmake.write_text(text)
+
 
 # Halve Sound Manager's output/mixing rate while retaining all voices. Undertale
-# is still fully mixed in stereo, but the G3 performs half as many mix samples.
+# remains stereo, while the G3 performs half as many mix samples.
 audio = Path('/tmp/Butterscotch/src/audio/macos9/mac_audio_system.c')
 text = audio.read_text()
 text = replace_once(text, '#define MAC_AUDIO_OUTPUT_RATE 44100',
@@ -159,16 +212,3 @@ text = replace_once(text, '#define MAC_AUDIO_OUTPUT_RATE 44100',
 text = replace_once(text, '#define MAC_AUDIO_BUFFER_FRAMES 2048',
                     '#define MAC_AUDIO_BUFFER_FRAMES 1024', 'audio buffer size')
 audio.write_text(text)
-
-
-# Release already selects optimisation, but state the G3-safe hot path flags
-# explicitly so container/toolchain defaults cannot quietly regress them.
-cmake = Path('/tmp/Butterscotch/macos9/CMakeLists.txt')
-text = cmake.read_text()
-text = replace_once(
-    text,
-    'add_compile_options(-mcpu=750 -mtune=750)',
-    'add_compile_options(-mcpu=750 -mtune=750 -O3 -fomit-frame-pointer -fno-math-errno)',
-    'G3 release optimisation flags',
-)
-cmake.write_text(text)
