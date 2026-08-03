@@ -28,3 +28,6 @@ exec(compile(v6_path.read_text(), str(v6_path), 'exec'))
 
 v7_path = workspace / 'patch.v2' / 'hotfix-runtime-v7.py'
 exec(compile(v7_path.read_text(), str(v7_path), 'exec'))
+
+v8_path = workspace / 'patch.v2' / 'hotfix-runtime-v8.py'
+exec(compile(v8_path.read_text(), str(v8_path), 'exec'))
