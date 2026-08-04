@@ -56,6 +56,10 @@ changed = [p for p in changed if before_hashes.get(p) != after_hashes.get(p)]
 expected = ['src/gl_legacy/gl_legacy_renderer.c']
 if changed != expected:
     raise SystemExit(f'Clean-source audit failed; changed files were: {changed!r}')
+if after.count('Matrix4f_flipClipY(&projection);') != 1:
+    raise SystemExit('Resulting source has an unexpected projection-flip count')
+if '#ifndef PLATFORM_MACOS9\n    Matrix4f_flipClipY(&projection);\n#endif' not in after:
+    raise SystemExit('Resulting source does not contain the compile-time Mac guard')
 
 diff = ''.join(difflib.unified_diff(
     before.splitlines(True),
@@ -63,8 +67,6 @@ diff = ''.join(difflib.unified_diff(
     fromfile='v7/src/gl_legacy/gl_legacy_renderer.c',
     tofile='v11/src/gl_legacy/gl_legacy_renderer.c',
 ))
-if diff.count('Matrix4f_flipClipY') != 2 or '#ifndef PLATFORM_MACOS9' not in diff:
-    raise SystemExit('Orientation diff audit failed')
 Path('/tmp/source-audit.diff').write_text(diff)
 print(diff)
 print('SOURCE AUDIT PASSED: exact v7 source plus one compile-time renderer edit')
