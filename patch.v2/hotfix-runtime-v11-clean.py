@@ -42,21 +42,16 @@ before_hashes = hashes(source_root)
 renderer = source_root / 'src/gl_legacy/gl_legacy_renderer.c'
 before = renderer.read_text()
 old = '    Matrix4f_flipClipY(&projection);'
-new = '''#ifdef PLATFORM_MACOS9
-    /* Direct-window mode already renders into the native bottom-up window. */
-    if (!((GLLegacyRenderer*)renderer)->directFramebuffer)
-#endif
-        Matrix4f_flipClipY(&projection);'''
+new = '''#ifndef PLATFORM_MACOS9
+    Matrix4f_flipClipY(&projection);
+#endif'''
 if before.count(old) != 1:
     raise SystemExit(f'Expected exactly one projection flip, found {before.count(old)}')
 after = before.replace(old, new, 1)
 renderer.write_text(after)
 
 after_hashes = hashes(source_root)
-changed = sorted(
-    set(before_hashes) | set(after_hashes),
-    key=str,
-)
+changed = sorted(set(before_hashes) | set(after_hashes), key=str)
 changed = [p for p in changed if before_hashes.get(p) != after_hashes.get(p)]
 expected = ['src/gl_legacy/gl_legacy_renderer.c']
 if changed != expected:
@@ -68,8 +63,8 @@ diff = ''.join(difflib.unified_diff(
     fromfile='v7/src/gl_legacy/gl_legacy_renderer.c',
     tofile='v11/src/gl_legacy/gl_legacy_renderer.c',
 ))
-if diff.count('Matrix4f_flipClipY') != 2 or 'directFramebuffer' not in diff:
+if diff.count('Matrix4f_flipClipY') != 2 or '#ifndef PLATFORM_MACOS9' not in diff:
     raise SystemExit('Orientation diff audit failed')
 Path('/tmp/source-audit.diff').write_text(diff)
 print(diff)
-print('SOURCE AUDIT PASSED: exact v7 source plus one renderer edit')
+print('SOURCE AUDIT PASSED: exact v7 source plus one compile-time renderer edit')
