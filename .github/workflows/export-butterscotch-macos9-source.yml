@@ -1,0 +1,125 @@
+name: Export Butterscotch Mac OS 9 Source
+
+on:
+  push:
+    branches:
+      - butterscotch-macos9-build2
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  export:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out build files
+        uses: actions/checkout@v4
+        with:
+          ref: butterscotch-macos9-build2
+
+      - name: Decode port patches
+        shell: bash
+        run: |
+          cat patch.small/part* | base64 -d | gzip -d > /tmp/butterscotch-macos9.patch
+          cat patch.v2/part* | base64 -d | gzip -d > /tmp/butterscotch-macos9-v2.patch
+
+      - name: Reconstruct exact patched source
+        shell: bash
+        run: |
+          git clone https://github.com/ButterscotchRunner/Butterscotch.git /tmp/Butterscotch
+          cd /tmp/Butterscotch
+          git checkout 3a0270d6a5022ad20fed1c7f9dca647f41ce26da
+          patch -p1 < /tmp/butterscotch-macos9.patch
+          patch -p1 < /tmp/butterscotch-macos9-v2.patch
+          patch -p1 < "$GITHUB_WORKSPACE/patch.v2/hotfix-tracing.patch"
+          patch -p1 < "$GITHUB_WORKSPACE/patch.v2/hotfix-gl11.patch"
+          python3 - <<'PY'
+          from pathlib import Path
+
+          root = Path('/tmp/Butterscotch/CMakeLists.txt')
+          text = root.read_text()
+          old = '    target_link_libraries(butterscotch PRIVATE ${BACKEND_LIBRARIES} ${AUDIO_LIBRARIES} ${PLATFORM_LIBRARIES})'
+          new = '''    if(PLATFORM STREQUAL "macos9")
+              target_link_libraries(butterscotch ${BACKEND_LIBRARIES} ${AUDIO_LIBRARIES} ${PLATFORM_LIBRARIES})
+          else()
+              target_link_libraries(butterscotch PRIVATE ${BACKEND_LIBRARIES} ${AUDIO_LIBRARIES} ${PLATFORM_LIBRARIES})
+          endif()'''
+          if old not in text:
+              raise SystemExit('Expected link line was not found')
+          text = text.replace(old, new, 1)
+          old_defs = 'PLATFORM_MACOS9 USE_MACOS9_NATIVE NO_STRINGS_H NO_STRCASECMP NO_STRTOK_R STBI_NO_SIMD'
+          new_defs = 'PLATFORM_MACOS9 USE_MACOS9_NATIVE STBI_NO_SIMD'
+          if old_defs not in text:
+              raise SystemExit('Expected Mac OS 9 definitions were not found')
+          root.write_text(text.replace(old_defs, new_defs, 1))
+
+          mac = Path('/tmp/Butterscotch/macos9/CMakeLists.txt')
+          text = mac.read_text()
+          mac.write_text(text.replace('project(ButterscotchMacOS9 C)', 'project(ButterscotchMacOS9 C CXX)', 1))
+
+          gettime = Path('/tmp/Butterscotch/src/gettime.c')
+          text = gettime.read_text()
+          old = '''    /* Microseconds() is monotonic from boot and is available in the Classic Mac OS Toolbox. */
+              UnsignedWide t;
+              Microseconds(&t);
+              return ((((uint64_t)t.hi) << 32) | (uint64_t)t.lo) * 1000ULL;'''
+          new = '''    /* TickCount() advances at 60 Hz and is monotonic from boot. */
+              return ((uint64_t)TickCount() * 1000000000ULL) / 60ULL;'''
+          if old not in text:
+              raise SystemExit('Expected timing block was not found')
+          gettime.write_text(text.replace(old, new, 1))
+
+          backend = Path('/tmp/Butterscotch/src/desktop/backends/macos9.c')
+          text = backend.read_text()
+          text = text.replace('#include <CodeFragments.h>', '/* CFM declarations are provided through Types.h. */', 1)
+          replacements = {
+              'CFragConnectionID': 'ConnectionID',
+              'CFragSymbolClass': 'SymClass',
+              'kPowerPCCFragArch': 'kPowerPCArch',
+              'kLoadCFrag': 'kReferenceCFrag',
+              'controlKey': 'ControlKey',
+          }
+          for old_name, new_name in replacements.items():
+              text = text.replace(old_name, new_name)
+          backend.write_text(text)
+
+          glad = Path('/tmp/Butterscotch/vendor/glad/src/glad.c')
+          text = glad.read_text()
+          loader_start = '#if defined(_WIN32) || defined(__CYGWIN__)'
+          version_marker = '\nstruct gladGLversionStruct GLVersion = { 0, 0 };'
+          text = text.replace(loader_start, '#if !defined(PLATFORM_MACOS9)\n' + loader_start, 1)
+          text = text.replace(version_marker, '\n#else\nint gladLoadGL(void) { return 0; }\n#endif\nstruct gladGLversionStruct GLVersion = { 0, 0 };', 1)
+          glad.write_text(text)
+          PY
+
+      - name: Publish reconstructed source files
+        shell: bash
+        run: |
+          rm -rf exported-v3-source
+          mkdir -p exported-v3-source/src/audio/macos9 exported-v3-source/src/desktop/backends exported-v3-source/src/gl_legacy exported-v3-source/macos9
+          cp /tmp/Butterscotch/src/audio/macos9/* exported-v3-source/src/audio/macos9/
+          cp /tmp/Butterscotch/src/desktop/main.c exported-v3-source/src/desktop/main.c
+          cp /tmp/Butterscotch/src/desktop/backends/macos9.c exported-v3-source/src/desktop/backends/macos9.c
+          cp /tmp/Butterscotch/src/gl_legacy/gl_legacy_renderer.c exported-v3-source/src/gl_legacy/gl_legacy_renderer.c
+          cp /tmp/Butterscotch/src/gl_legacy/gl_legacy_renderer.h exported-v3-source/src/gl_legacy/gl_legacy_renderer.h
+          cp /tmp/Butterscotch/src/audio_system.h exported-v3-source/src/audio_system.h
+          cp /tmp/Butterscotch/CMakeLists.txt exported-v3-source/CMakeLists.txt
+          cp /tmp/Butterscotch/macos9/CMakeLists.txt exported-v3-source/macos9/CMakeLists.txt
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add exported-v3-source
+          git commit -m "Export exact v3 Mac OS 9 source" || exit 0
+          git push origin HEAD:butterscotch-macos9-build2
+
+      - name: Package reconstructed source
+        shell: bash
+        run: |
+          tar -C /tmp -czf "$GITHUB_WORKSPACE/Butterscotch-MacOS9-v3-exact-source.tar.gz" Butterscotch
+
+      - name: Upload reconstructed source
+        uses: actions/upload-artifact@v4
+        with:
+          name: Butterscotch-MacOS9-v3-exact-source
+          path: Butterscotch-MacOS9-v3-exact-source.tar.gz

@@ -1,10 +1,14 @@
 name: Build Butterscotch Mac OS 9
 
 on:
-  workflow_dispatch:
+  push:
+    branches:
+      - butterscotch-macos9-build2
   pull_request:
+    types: [opened, synchronize, reopened]
     branches:
       - main
+  workflow_dispatch:
 
 jobs:
   build:
@@ -14,22 +18,117 @@ jobs:
     steps:
       - name: Check out build files
         uses: actions/checkout@v4
-        with:
-          ref: butterscotch-macos9-build
 
-      - name: Decode port patch
+      - name: Decode port patches
         shell: bash
         run: |
-          base64 -d butterscotch-macos9.patch.gz.b64 | gzip -d > /tmp/butterscotch-macos9.patch
-          sha256sum /tmp/butterscotch-macos9.patch
+          echo "9968be8c2fdaa63c4ecf90920b81824fedc5a8c97886cbbcbc9260f758d4d17a  patch.small/part00" | sha256sum -c -
+          echo "153fddaa33b4233350ad46fa297dc74222783cfbc3792ecc079ea48303512662  patch.small/part01" | sha256sum -c -
+          echo "c9bb48cc23fddd26639240d0204165e5f556b60f894b6a9a0c75deaaf3bc4e58  patch.small/part02" | sha256sum -c -
+          echo "7fbe00d9288caffae357ae86650f9feb974ba6bb28584101cf0bdc99142668eb  patch.small/part03" | sha256sum -c -
+          echo "e9ae95d24146bd11755740f8c5f8648e17bbf9c8a955a15bf2c704a1c36d9f8b  patch.small/part04" | sha256sum -c -
+          echo "90b1d9a99a053737be8bf601cf68d3057dd055b4e51fbd21510de2ec994297d4  patch.small/part05" | sha256sum -c -
+          cat patch.small/part* | base64 -d | gzip -d > /tmp/butterscotch-macos9.patch
+          echo "c811392eb515c0921def4cc96b8125a426f30e88cdaf6dbe3ade5f01d88e919d  /tmp/butterscotch-macos9.patch" | sha256sum -c -
 
-      - name: Fetch matching Butterscotch source
+          echo "5f3c7809ff8acbe813f7a2877b7922bc57b2c6e42ffa8172c82db69101cabfce  patch.v2/part00" | sha256sum -c -
+          echo "149ba1a0098319e55637c6ac2adb56631e6ad481a98e563d3b7c37ad1f5bc556  patch.v2/part01" | sha256sum -c -
+          echo "36e580aefdc2b4369ff666a1b46ca442cfc2418d174f748df8c9b467ade478b3  patch.v2/part02" | sha256sum -c -
+          echo "211df1a0af4a50304cd3e47417b16febf5ee7814587be2a41f458fb0069a187c  patch.v2/part03" | sha256sum -c -
+          echo "417b7a05a21759191d4e499d8005b65a5b4b182db4efb8470db17b74437b4849  patch.v2/part04" | sha256sum -c -
+          cat patch.v2/part* > /tmp/butterscotch-macos9-v2.patch.gz.b64
+          echo "b10ad5ff33650a969b10f06be8bc2508ad845eee06434eeeca5e1c6ac40ba390  /tmp/butterscotch-macos9-v2.patch.gz.b64" | sha256sum -c -
+          base64 -d /tmp/butterscotch-macos9-v2.patch.gz.b64 | gzip -d > /tmp/butterscotch-macos9-v2.patch
+          echo "421bafaae133aac740e95da6c03250abb280c9a49b1486e0dee4e1088a72f8cd  /tmp/butterscotch-macos9-v2.patch" | sha256sum -c -
+          echo "1d9f8237ba1250e4137c5166122890f5cdd60f29a3e5e6b265b2434d0a60f960  patch.v2/hotfix-tracing.patch" | sha256sum -c -
+          sha256sum patch.v2/hotfix-gl11.patch
+
+      - name: Fetch and patch Butterscotch source
         shell: bash
         run: |
           git clone https://github.com/ButterscotchRunner/Butterscotch.git /tmp/Butterscotch
           cd /tmp/Butterscotch
           git checkout 3a0270d6a5022ad20fed1c7f9dca647f41ce26da
           patch -p1 < /tmp/butterscotch-macos9.patch
+          patch -p1 < /tmp/butterscotch-macos9-v2.patch
+          patch -p1 < "$GITHUB_WORKSPACE/patch.v2/hotfix-tracing.patch"
+          patch -p1 < "$GITHUB_WORKSPACE/patch.v2/hotfix-gl11.patch"
+          python3 - <<'PY'
+          from pathlib import Path
+
+          root = Path('/tmp/Butterscotch/CMakeLists.txt')
+          text = root.read_text()
+          old = '    target_link_libraries(butterscotch PRIVATE ${BACKEND_LIBRARIES} ${AUDIO_LIBRARIES} ${PLATFORM_LIBRARIES})'
+          new = '''    if(PLATFORM STREQUAL "macos9")
+              target_link_libraries(butterscotch ${BACKEND_LIBRARIES} ${AUDIO_LIBRARIES} ${PLATFORM_LIBRARIES})
+          else()
+              target_link_libraries(butterscotch PRIVATE ${BACKEND_LIBRARIES} ${AUDIO_LIBRARIES} ${PLATFORM_LIBRARIES})
+          endif()'''
+          if old not in text:
+              raise SystemExit('Expected link line was not found')
+          text = text.replace(old, new, 1)
+
+          old_defs = 'PLATFORM_MACOS9 USE_MACOS9_NATIVE NO_STRINGS_H NO_STRCASECMP NO_STRTOK_R STBI_NO_SIMD'
+          new_defs = 'PLATFORM_MACOS9 USE_MACOS9_NATIVE STBI_NO_SIMD'
+          if old_defs not in text:
+              raise SystemExit('Expected Mac OS 9 compatibility definitions were not found')
+          text = text.replace(old_defs, new_defs, 1)
+          root.write_text(text)
+
+          mac = Path('/tmp/Butterscotch/macos9/CMakeLists.txt')
+          text = mac.read_text()
+          old = 'project(ButterscotchMacOS9 C)'
+          new = 'project(ButterscotchMacOS9 C CXX)'
+          if old not in text:
+              raise SystemExit('Expected project language line was not found')
+          mac.write_text(text.replace(old, new, 1))
+
+          gettime = Path('/tmp/Butterscotch/src/gettime.c')
+          text = gettime.read_text()
+          old = '''    /* Microseconds() is monotonic from boot and is available in the Classic Mac OS Toolbox. */
+              UnsignedWide t;
+              Microseconds(&t);
+              return ((((uint64_t)t.hi) << 32) | (uint64_t)t.lo) * 1000ULL;'''
+          new = '''    /* TickCount() advances at 60 Hz and is monotonic from boot. */
+              return ((uint64_t)TickCount() * 1000000000ULL) / 60ULL;'''
+          if old not in text:
+              raise SystemExit('Expected Mac OS 9 Microseconds block was not found')
+          gettime.write_text(text.replace(old, new, 1))
+
+          backend = Path('/tmp/Butterscotch/src/desktop/backends/macos9.c')
+          text = backend.read_text()
+          if '#include <CodeFragments.h>' not in text:
+              raise SystemExit('Expected CodeFragments include was not found')
+          text = text.replace('#include <CodeFragments.h>', '/* CFM declarations are provided through Types.h. */', 1)
+          replacements = {
+              'CFragConnectionID': 'ConnectionID',
+              'CFragSymbolClass': 'SymClass',
+              'kPowerPCCFragArch': 'kPowerPCArch',
+              'kLoadCFrag': 'kReferenceCFrag',
+              'controlKey': 'ControlKey',
+          }
+          for old_name, new_name in replacements.items():
+              if old_name not in text:
+                  raise SystemExit(f'Expected Mac interface token was not found: {old_name}')
+              text = text.replace(old_name, new_name)
+          backend.write_text(text)
+
+          glad = Path('/tmp/Butterscotch/vendor/glad/src/glad.c')
+          text = glad.read_text()
+          loader_start = '#if defined(_WIN32) || defined(__CYGWIN__)'
+          version_marker = '\nstruct gladGLversionStruct GLVersion = { 0, 0 };'
+          if loader_start not in text or version_marker not in text:
+              raise SystemExit('Expected GLAD loader markers were not found')
+          text = text.replace(loader_start, '#if !defined(PLATFORM_MACOS9)\n' + loader_start, 1)
+          text = text.replace(
+              version_marker,
+              '\n#else\nint gladLoadGL(void) { return 0; }\n#endif\nstruct gladGLversionStruct GLVersion = { 0, 0 };',
+              1,
+          )
+          glad.write_text(text)
+          PY
+
+          python3 "$GITHUB_WORKSPACE/patch.v2/hotfix-runtime-v5.py"
 
       - name: Configure PowerPC Classic build
         shell: bash
@@ -52,6 +151,7 @@ jobs:
           find /tmp/Butterscotch/macos9/build -type f \
             \( -name '*.bin' -o -name '*.dsk' -o -name '*.APPL' -o -name '*.ad' -o -name '*.pef' -o -name '*.xcoff' \) \
             -exec cp -v '{}' "$GITHUB_WORKSPACE/artifacts/" \; 2>/dev/null || true
+          find "$GITHUB_WORKSPACE/artifacts" -maxdepth 1 -type f -printf '%f\n' || true
 
       - name: Upload compiler output
         if: always()
